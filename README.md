@@ -470,16 +470,84 @@ Potential contribution areas include:
 
 ---
 
+# Datasets, Model & Prompt Complexity Classifier
+
+LLMOptiFit includes benchmark datasets, real user prompt logs, a 14-parameter prompt complexity scoring system, and a pre-trained model router.
+
+## 1. What is this Data?
+
+### A. Martian RouterBench Datasets (`data/routerbench/`)
+* **Source:** [`withmartian/routerbench`](https://huggingface.co/datasets/withmartian/routerbench)
+* **Description:** Benchmark performance and cost evaluation data for 11 LLMs (GPT-4, Claude v2, Llama 2 70B, Mixtral 8x7B, etc.) across 5 core evaluation tasks: GSM8K (grade-school math), MBPP (Python coding), Hellaswag (commonsense reasoning), MMLU, and ARC Challenge.
+* **Key Files:**
+  * `data/routerbench/routerbench_0shot_english.parquet`: **392,832 rows** of English benchmark evaluation samples.
+  * `data/routerbench/routerbench_0shot_long.parquet`: **401,467 rows** in long format (`prompt`, `model`, `response`, `correct`, `cost`, `dataset`, `oracle_model_to_route_to`).
+  * `data/routerbench/routerbench_0shot_wide.parquet` & `routerbench_5shot_wide.parquet`: Wide format with 11 model response columns per prompt.
+
+### B. LMSYS Chatbot Arena User Prompts (`data/arena/`)
+* **Source:** [`lmsys/chatbot_arena_conversations`](https://huggingface.co/datasets/lmsys/chatbot_arena_conversations)
+* **Description:** Real human user prompts collected from the LMSYS Chatbot Arena, filtered for English conversations, deduplicated, and formatted for prompt classification and router training.
+* **Key Files:**
+  * `data/arena/arena_prompts_english.parquet`: **23,613 unique English user prompts** with human preference votes (`winner`), model pairings, toxicity tags, and placeholder schema fields for task classification.
+  * `data/arena/arena_prompts_english.csv`: CSV export of the processed Arena dataset.
+
+### C. Pre-trained Model & Router (`cache/models/` & `tools/`)
+* **Model File:** `cache/models/prompt_router.pkl` — Pre-trained `RandomForestClassifier` trained on rubric feature vectors to classify prompts into **Nano** (`nemotron-nano`), **Super** (`nemotron-super`), or **Ultra** (`nemotron-ultra`) model tiers.
+* **Classifier:** `tools/prompt_classifier.py` — Feature extractor scoring prompts on a **14-parameter rubric** (Reasoning Complexity, Task Type, Decision Search, Accuracy Requirement, Context Length, Output Structure, Domain Difficulty, etc.).
+
+---
+
+## 2. How to Read and Load the Data
+
+### Reading Parquet Datasets in Python
+
+```python
+import pandas as pd
+
+# Load the 392K row English RouterBench dataset
+df_bench = pd.read_parquet("data/routerbench/routerbench_0shot_english.parquet")
+print(f"RouterBench rows: {len(df_bench):,}")
+print(df_bench[["dataset", "prompt", "model", "correct", "cost"]].head())
+
+# Load the 23.6K row LMSYS Arena English User Prompts
+df_arena = pd.read_parquet("data/arena/arena_prompts_english.parquet")
+print(f"Arena prompts: {len(df_arena):,}")
+print(df_arena[["prompt_id", "prompt", "model_a", "model_b", "human_preference"]].head())
+```
+
+### Classifying Prompts with the Router Model
+
+```python
+from tools.prompt_classifier import classify_prompt
+
+prompt = "Write an async Python microservice in FastAPI to stream stock tickers from Redis PubSub."
+
+result = classify_prompt(prompt)
+print(f"Route Tier:        {result.route_tier.upper()}")
+print(f"Recommended Model: {result.recommended_model}")
+print(f"Weighted Score:    {result.weighted_score:.3f}")
+print(f"Task Type:         {result.scores.predicted_task_type}")
+
+# Access full 14-parameter rubric breakdown
+for driver in result.rationale["top_drivers"]:
+    print(f"  {driver['parameter']}: score={driver['score']:.2f}, contribution={driver['contribution']:.3f}")
+```
+
+### Command Line Interface
+
+```powershell
+python -m tools.prompt_classifier --prompt "Compare SMA crossover vs RSI mean reversion and output JSON."
+```
+
+### Interactive Notebook
+
+Open [`prompt.ipynb`](file:///D:/QuantPath/LLMOptiFit/prompt.ipynb) in VS Code or Jupyter to interactively load the datasets and run classification visualizers.
+
+---
+
 # Disclaimer
 
 LLM performance varies depending on prompts, datasets, model versions, provider updates, temperature settings, system instructions, and evaluation methodology.
 
 LLMOptiFit recommendations should therefore be treated as decision-support information rather than an absolute measure of model quality. Model pricing and capabilities may also change over time and should be verified with the respective model provider.
 
----
-
-# LLMOptiFit
-
-**One task. Many models. Find the right fit.**
-
-**Compare models. Optimize cost. Choose the right fit.**
